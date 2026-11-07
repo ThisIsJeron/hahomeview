@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+dev/ha/*
+!dev/ha/configuration.yaml
+dev/.ha-demo.env

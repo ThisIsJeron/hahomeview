@@ -1,0 +1,59 @@
+:root {
+  color-scheme: light dark;
+  --text: #1c1c1e;
+  --text-2: rgba(60, 60, 67, 0.6);
+  --glass: rgba(255, 255, 255, 0.42);
+  --glass-edge: rgba(255, 255, 255, 0.7);
+  --glass-shadow: rgba(0, 0, 0, 0.1);
+  --icon: #5e5e66;
+  --tint: #c8bff6;        /* lights, fans: HomeView lavender */
+  --tint-text: #3b2f8f;
+  --tint-warm: #f6d9a8;   /* scenes */
+  --tint-warm-text: #6e4a0a;
+  --radius: 24px;
+  --bg-1: #dfe7f5;
+  --bg-2: #cfd7ea;
+  --bg-3: #eadfe9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #f2f2f7;
+    --text-2: rgba(235, 235, 245, 0.6);
+    --glass: rgba(50, 50, 58, 0.5);
+    --glass-edge: rgba(255, 255, 255, 0.18);
+    --glass-shadow: rgba(0, 0, 0, 0.4);
+    --icon: #c7c7cf;
+    --tint: #a89cf0;
+    --tint-text: #1a1240;
+    --bg-1: #1f2233;
+    --bg-2: #141624;
+    --bg-3: #2a1f33;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  color: var(--text);
+  background: var(--bg-2);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+/* Static gradient wallpaper on a fixed layer (iOS has no background-attachment: fixed). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 50% at 15% 10%, var(--bg-1) 0%, transparent 70%),
+    radial-gradient(50% 60% at 85% 20%, var(--bg-3) 0%, transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, var(--bg-1) 0%, transparent 70%),
+    var(--bg-2);
+}
+hv-app { display: block; height: 100%; }

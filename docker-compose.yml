@@ -1,0 +1,8 @@
+services:
+  hahomeview:
+    build: .
+    ports:
+      - "8099:80"
+    environment:
+      HA_URL: http://192.168.1.10:8123  # IP or container-resolvable name; .local mDNS names will not resolve in Docker
+    restart: unless-stopped

@@ -1,0 +1,27 @@
+map $http_upgrade $connection_upgrade { default upgrade; "" close; }
+
+server {
+  listen 80;
+  root /usr/share/nginx/html;
+
+  location = /index.html { add_header Cache-Control "no-cache"; }
+  location /assets/      { add_header Cache-Control "public, max-age=31536000, immutable"; }
+  location /             { try_files $uri /index.html; }
+
+  # HA's login page would register HA's service worker on this origin (https/localhost only); keep it out.
+  location ~ ^/sw-.*\.js$ { return 404; }
+
+  # Everything HA-owned is proxied so HA is same-origin: login page, websocket, icons, camera images.
+  location ~ ^/(api|auth|static|frontend_latest|frontend_es5|local|hacsfiles|\.well-known)/ {
+    proxy_pass ${HA_URL};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_ssl_server_name on;
+    # Deliberately no X-Forwarded-* / X-Real-IP: HA rejects them with 400 unless trusted_proxies is configured.
+    # Host stays $proxy_host (HA's own host), so no HA config changes are needed.
+  }
+}
