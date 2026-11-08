@@ -85,15 +85,13 @@ function glassRoot(root: string) {
     ${r} .fill {
       position: absolute;
       left: 0;
-      right: 0;
       bottom: 0;
       z-index: 2;
+      width: 100%;
       height: 0;
+      margin: 0;
       pointer-events: none;
       background: var(--fill-color);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-      -webkit-mask-image: linear-gradient(#000 0, #000 calc(100% - 22px), transparent 100%);
-      mask-image: linear-gradient(#000 0, #000 calc(100% - 22px), transparent 100%);
       transition: height var(--duration) var(--ease-out);
     }
 

@@ -16,15 +16,24 @@ export class HvTile extends LitElement {
     css`
       :host {
         box-sizing: border-box;
+        display: block;
+        cursor: pointer;
+        -webkit-user-drag: none;
+      }
+      /* Padding lives here so the level fill's box is the full tile, not the content box. */
+      .body {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 2px;
+        box-sizing: border-box;
         padding: 10px;
         text-align: center;
-        cursor: pointer;
-        -webkit-user-drag: none;
+        pointer-events: none;
       }
       :host([readonly]) { cursor: default; }
 
@@ -49,11 +58,13 @@ export class HvTile extends LitElement {
       :host([group="climate"]) { --fill-color: rgba(255, 150, 90, 0.55); }
 
       :host([image]) {
+        color: #fff;
+        --_icon: #fff;
+      }
+      :host([image]) .body {
         padding: 0;
         justify-content: flex-end;
         align-items: flex-start;
-        color: #fff;
-        --_icon: #fff;
       }
       img {
         position: absolute;
@@ -118,7 +129,7 @@ export class HvTile extends LitElement {
       .sub:empty { display: none; }
 
       /* M = wide: icon left, text right. L = big: larger type. */
-      :host([size="M"]) { flex-direction: row; gap: 14px; padding: 14px 20px; text-align: left; }
+      :host([size="M"]) .body { flex-direction: row; gap: 14px; padding: 14px 20px; text-align: left; }
       :host([size="M"]) .icon { width: 22%; height: 46%; margin: 0; flex: none; }
       :host([size="M"]) .name, :host([size="L"]) .name { font-size: 16px; }
       :host([size="M"]) .sub, :host([size="L"]) .sub { font-size: 13px; }
@@ -174,12 +185,15 @@ export class HvTile extends LitElement {
     const sub = this.subtitle === "room" ? t.room ?? "" : t.stateText;
     return html`
       ${glassLayers(t.fill ?? 0)}
-      ${t.image ? html`<img src=${t.image} alt="" draggable="false" />` : html`<div class="icon">${this.iconPath ? unsafeSVG(this.iconPath) : nothing}</div>`}
-      <div class="text">
-        <div class="name">${t.name}</div>
-        <div class="sub">${sub}</div>
-      </div>
-      <div class="badge">${this.size ?? "S"}</div>`;
+      ${t.image ? html`<img src=${t.image} alt="" draggable="false" />` : nothing}
+      <div class="body">
+        ${t.image ? nothing : html`<div class="icon">${this.iconPath ? unsafeSVG(this.iconPath) : nothing}</div>`}
+        <div class="text">
+          <div class="name">${t.name}</div>
+          <div class="sub">${sub}</div>
+        </div>
+        <div class="badge">${this.size ?? "S"}</div>
+      </div>`;
   }
 }
 customElements.define("hv-tile", HvTile);

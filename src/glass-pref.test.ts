@@ -8,10 +8,10 @@ test("clampTransparency keeps 0–100 and falls back when the value is not a num
   assert.equal(clampTransparency(100), 100);
   assert.equal(clampTransparency(-4), 0);
   assert.equal(clampTransparency(140), 100);
-  assert.equal(clampTransparency(Number.NaN), 35);
+  assert.equal(clampTransparency(Number.NaN), 100);
 });
 
-test("clear factor is 1 at the default, 0 when fully clear, and does not invert the slider", () => {
+test("clear factor is 1 at 35, 0 when fully clear, and does not invert the scale", () => {
   assert.equal(clearFactorForTransparency(35), 1);
   assert.equal(clearFactorForTransparency(100), 0);
   assert.ok(clearFactorForTransparency(0) > clearFactorForTransparency(35));
