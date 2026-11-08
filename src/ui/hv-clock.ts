@@ -65,7 +65,6 @@ export class HvClock extends LitElement {
         height: 100%;
         filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
       }
-      .ring { fill: none; stroke: #fff; stroke-width: 0.9; }
       .tick { stroke: #fff; stroke-linecap: round; }
       .hand { stroke: #fff; stroke-linecap: round; }
       .hub { fill: #fff; }
@@ -87,10 +86,10 @@ export class HvClock extends LitElement {
       return svg`<line class="tick" x1="${50 + inner * Math.sin(a)}" y1="${50 - inner * Math.cos(a)}" x2="${50 + outer * Math.sin(a)}" y2="${50 - outer * Math.cos(a)}" stroke-width="${major ? 2.15 : 1.55}"/>`;
     });
     return html`${glassLayers()}<svg class="face-svg" viewBox="0 0 100 100">
-      <circle class="ring" cx="50" cy="50" r="48.4" />
       ${ticks}
       ${hand(h * 30, 20, 3.1)}
       ${hand(m * 6, 32, 2.05)}
+      ${hand(s * 6, 40, 0.85)}
       <circle class="hub" cx="50" cy="50" r="1.7" />
     </svg>`;
   }
