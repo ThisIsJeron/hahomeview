@@ -10,7 +10,9 @@ export function glassLayers(fill = 0) {
   return html`${lensSvg()}
     <div class="lens"></div>
     <div class="surface"></div>
-    <div class="fill" style="height:${level}%"></div>`;
+    <div class="fill" style="height:${level}%"></div>
+    <div class="edge top"></div>
+    <div class="edge bottom"></div>`;
 }
 
 /**
@@ -46,8 +48,8 @@ function glassRoot(root: string) {
 
     /*
      * Rim refraction. A magnified, edge-displaced copy of the wallpaper is
-     * masked to a band that follows the real corner radius. The frosted
-     * surface sits inside that band so the bend stays visible.
+     * masked to a thin band on the real corner radius. The frosted surface
+     * covers the whole shape, out to that same edge.
      */
     ${r} .lens {
       position: absolute;
@@ -55,7 +57,7 @@ function glassRoot(root: string) {
       z-index: 0;
       pointer-events: none;
       border-radius: inherit;
-      padding: 12px;
+      padding: 0;
       background: var(--wallpaper);
       background-attachment: scroll;
       background-size: var(--wallpaper-lens-size, calc(var(--lens-scale) * 100vw) calc(var(--lens-scale) * 100vh));
@@ -69,12 +71,12 @@ function glassRoot(root: string) {
 
     ${r} .surface {
       position: absolute;
-      inset: 8px;
+      inset: 0;
       z-index: 1;
       pointer-events: none;
-      border-radius: calc(var(--radius) - 8px);
+      border-radius: inherit;
       background: rgba(255, 255, 255, min(1, calc(var(--surface-alpha) * var(--glass-clear-factor))));
-      box-shadow: 0 0 10px 5px rgba(255, 255, 255, min(1, calc(var(--surface-alpha) * var(--glass-clear-factor))));
+      box-shadow: none;
       -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
       backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
       transition: background var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
@@ -95,26 +97,28 @@ function glassRoot(root: string) {
       transition: height var(--duration) var(--ease-out);
     }
 
-    /* Bevel: bright along the top and left, shaded along the bottom. */
-    ${r}::before {
-      content: "";
+    /* Partial top and bottom strokes. They fade out before the side edges. */
+    ${r} .edge {
       position: absolute;
-      inset: 0;
-      z-index: 3;
+      left: 0;
+      right: 0;
+      z-index: 6;
+      height: 32px;
+      box-sizing: border-box;
       pointer-events: none;
-      border-radius: inherit;
-      padding: 1.5px;
-      background: linear-gradient(
-        160deg,
-        rgba(255, 255, 255, 0.95) 0%,
-        rgba(255, 255, 255, 0.28) 28%,
-        rgba(255, 255, 255, 0.08) 62%,
-        rgba(255, 255, 255, 0.45) 100%
-      );
-      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      -webkit-mask-composite: xor;
-      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      mask-composite: exclude;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%);
+    }
+    ${r} .edge.top {
+      top: 0;
+      border-bottom: none;
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+    ${r} .edge.bottom {
+      bottom: 0;
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
     }
 
     ${r}::after {
