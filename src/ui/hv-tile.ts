@@ -1,6 +1,8 @@
 import { LitElement, html, css, nothing } from "lit";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { glass, glassLayers } from "./glass.ts";
+import { editChrome, editHandle } from "./edit-chrome.ts";
+import { SIZE_LABEL, type Size } from "../layout.ts";
 import type { Tile } from "../rooms.ts";
 
 export class HvTile extends LitElement {
@@ -13,6 +15,7 @@ export class HvTile extends LitElement {
 
   static styles = [
     glass,
+    editChrome,
     css`
       :host {
         box-sizing: border-box;
@@ -128,17 +131,17 @@ export class HvTile extends LitElement {
       }
       .sub:empty { display: none; }
 
-      /* M = wide: icon left, text right. L = big: larger type. */
-      :host([size="M"]) .body { flex-direction: row; gap: 14px; padding: 14px 20px; text-align: left; }
-      :host([size="M"]) .icon { width: 22%; height: 46%; margin: 0; flex: none; }
+      /* M is a tall 1×2. L is a square 2×2. Keep the icon square in both. */
+      :host([size="M"]) .icon { width: 42%; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
       :host([size="M"]) .name, :host([size="L"]) .name { font-size: 16px; }
       :host([size="M"]) .sub, :host([size="L"]) .sub { font-size: 13px; }
-      :host([size="L"]) .icon { width: 32%; height: 32%; margin-bottom: 10px; }
+      :host([size="L"]) .icon { width: 32%; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
 
       /* Edit mode: wiggle, size badge, no browser scrolling on the tile. */
       :host([editing]) { touch-action: none; animation: wiggle 0.35s ease-in-out infinite; }
       :host([editing]:active) { transform: none; filter: none; }
       :host([dragging]) { opacity: 0.35; animation: none; filter: none; }
+      :host([resizing]) { animation: none; }
       .badge {
         display: none;
         position: absolute;
@@ -192,8 +195,9 @@ export class HvTile extends LitElement {
           <div class="name">${t.name}</div>
           <div class="sub">${sub}</div>
         </div>
-        <div class="badge">${this.size ?? "S"}</div>
-      </div>`;
+        <div class="badge">${SIZE_LABEL[(this.size ?? "S") as Size]}</div>
+      </div>
+      ${editHandle}`;
   }
 }
 customElements.define("hv-tile", HvTile);

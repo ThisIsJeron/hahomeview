@@ -7,9 +7,22 @@ export interface PageLayout {
 }
 export type Layouts = Record<string, PageLayout>;
 
-/** [columns, rows] a size spans. */
-export const SPAN: Record<Size, [number, number]> = { S: [1, 1], M: [2, 1], L: [2, 2] };
+/** [columns, rows] a size spans. M is double height. L is the only double-width size, so it is also double height. */
+export const SPAN: Record<Size, [number, number]> = { S: [1, 1], M: [1, 2], L: [2, 2] };
+export const SIZE_LABEL: Record<Size, string> = { S: "1×1", M: "1×2", L: "2×2" };
 export const nextSize = (s: Size = "S"): Size => (s === "S" ? "M" : s === "M" ? "L" : "S");
+
+/**
+ * Resize gesture: the pointer's distance from the tile's top-left, in cells.
+ * Two cells wide becomes 2×2. Two cells tall, while still one cell wide, becomes 1×2.
+ */
+export function sizeForSpan(cols: number, rows: number): Size {
+  const c = Math.max(1, Math.min(2, Math.round(cols) || 1));
+  const r = Math.max(1, Math.min(2, Math.round(rows) || 1));
+  if (c >= 2) return "L";
+  if (r >= 2) return "M";
+  return "S";
+}
 
 const KEY = "hv-layout";
 export function loadLayouts(): Layouts {
