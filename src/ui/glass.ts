@@ -10,7 +10,8 @@ export function glassLayers(fill = 0) {
   return html`${lensSvg()}
     <div class="lens"></div>
     <div class="surface"></div>
-    <div class="fill" style="height:${level}%"></div>`;
+    <div class="fill" style="height:${level}%"></div>
+    <div class="edge"></div>`;
 }
 
 /**
@@ -93,6 +94,33 @@ function glassRoot(root: string) {
       -webkit-mask-image: linear-gradient(#000 0, #000 calc(100% - 22px), transparent 100%);
       mask-image: linear-gradient(#000 0, #000 calc(100% - 22px), transparent 100%);
       transition: height var(--duration) var(--ease-out);
+    }
+
+    /* Stroke only the top and bottom rims, including the corners. The sides stay open. */
+    ${r} .edge {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      box-sizing: border-box;
+      pointer-events: none;
+      border-radius: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.45);
+      -webkit-mask-image: linear-gradient(
+        #000 0,
+        #000 32px,
+        transparent 32px,
+        transparent calc(100% - 32px),
+        #000 calc(100% - 32px),
+        #000 100%
+      );
+      mask-image: linear-gradient(
+        #000 0,
+        #000 32px,
+        transparent 32px,
+        transparent calc(100% - 32px),
+        #000 calc(100% - 32px),
+        #000 100%
+      );
     }
 
     ${r}::after {
