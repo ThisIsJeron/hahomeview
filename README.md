@@ -11,7 +11,8 @@ screen, hang it on the wall.
 - **Zero HA configuration.** Rooms are your HA areas, tiles are your entities, icons come from your HA server.
 - **Tap to control.** Lights, switches, fans, locks, covers, scenes, scripts, media players, vacuums. Sensors are read-only.
 - **Arrange it like HomeView.** Long-press a tile to enter edit mode, then drag it to a new position.
-  Drag the corner handle to resize between 1×1, 1×2, and 2×2, or tap a tile to cycle those sizes.
+  Drag the corner handle to resize between 1×1, 2×1, 1×2, and 2×2. The tile follows
+  the finger and settles into the grid. Tap a tile to cycle those sizes.
   Tiles scale to fit the screen: three across on a square display, four on a landscape iPad.
   Layouts are saved per device.
 - **Favourites on the Home page.** Add an HA label named **Favorite** to any entity. Scenes fill in until you do.

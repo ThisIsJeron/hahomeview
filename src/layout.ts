@@ -1,25 +1,26 @@
 // Per-page tile order and sizes. Pure; persisted in localStorage.
 // ponytail: per-device storage (a wall iPad has its own layout). HA's frontend/set_user_data could sync it per user later.
-export type Size = "S" | "M" | "L";
+export type Size = "S" | "W" | "M" | "L";
 export interface PageLayout {
   order: string[];
   sizes: Record<string, Size>;
 }
 export type Layouts = Record<string, PageLayout>;
 
-/** [columns, rows] a size spans. M is double height. L is the only double-width size, so it is also double height. */
-export const SPAN: Record<Size, [number, number]> = { S: [1, 1], M: [1, 2], L: [2, 2] };
-export const SIZE_LABEL: Record<Size, string> = { S: "1×1", M: "1×2", L: "2×2" };
-export const nextSize = (s: Size = "S"): Size => (s === "S" ? "M" : s === "M" ? "L" : "S");
+/** [columns, rows] a size spans. */
+export const SPAN: Record<Size, [number, number]> = { S: [1, 1], W: [2, 1], M: [1, 2], L: [2, 2] };
+export const SIZE_LABEL: Record<Size, string> = { S: "1×1", W: "2×1", M: "1×2", L: "2×2" };
+export const nextSize = (s: Size = "S"): Size => (s === "S" ? "W" : s === "W" ? "M" : s === "M" ? "L" : "S");
 
 /**
  * Resize gesture: the pointer's distance from the tile's top-left, in cells.
- * Two cells wide becomes 2×2. Two cells tall, while still one cell wide, becomes 1×2.
+ * Width and height are chosen independently, so 2×1 is its own size.
  */
 export function sizeForSpan(cols: number, rows: number): Size {
   const c = Math.max(1, Math.min(2, Math.round(cols) || 1));
   const r = Math.max(1, Math.min(2, Math.round(rows) || 1));
-  if (c >= 2) return "L";
+  if (c >= 2 && r >= 2) return "L";
+  if (c >= 2) return "W";
   if (r >= 2) return "M";
   return "S";
 }
