@@ -1,5 +1,5 @@
-/** User glass transparency, 0–100. Higher means a clearer lens. 35 is the reference look. */
-export const GLASS_TRANSPARENCY_DEFAULT = 35;
+/** Glass transparency, 0–100. Higher means a clearer lens. The surface is clear. */
+export const GLASS_TRANSPARENCY_DEFAULT = 100;
 const KEY = "hv-glass-transparency";
 
 export function clampTransparency(value: number): number {
@@ -8,8 +8,8 @@ export function clampTransparency(value: number): number {
 }
 
 /**
- * Scales state opacity. At the default 35 the factor is 1, so off stays 0.35 and on stays 0.25.
- * 100 clears the surface. 0 thickens it. Edges and highlights do not use this.
+ * Scales state opacity. 100 clears the surface. 35 keeps off at 0.35 and on at 0.25.
+ * 0 thickens it. Edges and highlights do not use this.
  */
 export function clearFactorForTransparency(transparency: number): number {
   const t = clampTransparency(transparency);
@@ -46,5 +46,10 @@ export function readGlassTransparency(): number {
 }
 
 export function initGlassTransparency(): number {
-  return applyGlassTransparency(readGlassTransparency());
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* private mode */
+  }
+  return applyGlassTransparency(GLASS_TRANSPARENCY_DEFAULT);
 }

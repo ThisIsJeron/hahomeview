@@ -9,7 +9,6 @@ import type { HA } from "../ha.ts";
 import { resolveIconName, iconPath, iconSvg } from "../icons.ts";
 import { loadLayouts, saveLayouts, orderTiles, move, nextSize, SPAN, type Layouts, type Size } from "../layout.ts";
 import { glassChip, glassLayers } from "./glass.ts";
-import { applyGlassTransparency, readGlassTransparency } from "../glass-pref.ts";
 import { pokeLens } from "../glass-lens.ts";
 
 const CLOCK = "clock";
@@ -45,7 +44,6 @@ export class HvApp extends LitElement {
     _editing: { state: true },
     _layouts: { state: true },
     _drag: { state: true },
-    _glass: { state: true },
     _dim: { state: true },
   };
   declare home?: Home;
@@ -58,7 +56,6 @@ export class HvApp extends LitElement {
   declare _editing?: string; // page id in edit mode
   declare _layouts: Layouts;
   declare _drag?: Drag;
-  declare _glass: number;
   /** Live brightness while a short-hold drag is dimming a light. */
   declare _dim?: Dim;
   private _press?: Press;
@@ -72,8 +69,6 @@ export class HvApp extends LitElement {
     this._page = 0;
     this._icons = new Map();
     this._layouts = loadLayouts();
-    this._glass = readGlassTransparency();
-    applyGlassTransparency(this._glass);
     this.addEventListener("pointermove", this._onMove);
     this.addEventListener("pointerup", this._onUp);
     this.addEventListener("pointercancel", this._onUp);
@@ -159,11 +154,6 @@ export class HvApp extends LitElement {
     .glass-chip > span,
     .glass-chip > input { position: relative; z-index: 5; }
     h1 button.glass-chip { font-size: 16px; font-weight: 600; padding: 6px 16px; }
-    .glass-pref input {
-      width: 88px;
-      margin: 0;
-      accent-color: var(--text);
-    }
     .grid {
       display: grid;
       grid-template-columns: repeat(var(--cols), var(--tile));
@@ -458,25 +448,6 @@ export class HvApp extends LitElement {
     </div>`;
   }
 
-  private _onGlass(e: Event) {
-    this._glass = applyGlassTransparency(Number((e.target as HTMLInputElement).value));
-  }
-
-  private _glassControl() {
-    return html`<label class="glass-chip glass-pref">
-      ${glassLayers()}
-      <span>Glass ${this._glass}</span>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        .value=${String(this._glass)}
-        @input=${this._onGlass}
-        aria-label="Glass transparency"
-      />
-    </label>`;
-  }
-
   private _title(page: string, text: string, extra?: unknown) {
     return html`<h1>
       <span style="font: inherit; color: inherit">${text}</span>
@@ -493,7 +464,7 @@ export class HvApp extends LitElement {
     return html`
       <div class="pages" @scroll=${this._onScroll}>
         <section class="page">
-          ${this._title("home", "Home", this._glassControl())}
+          ${this._title("home", "Home")}
           ${this._grid("home", "room")}
         </section>
         ${this.home.rooms.map(
