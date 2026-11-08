@@ -47,6 +47,22 @@ export class HvClock extends LitElement {
       :host .surface {
         border-radius: 50%;
       }
+      /* The straight band would be clipped to a point on the circle, so the same fade follows the rim. */
+      :host .edge.bottom { display: none; }
+      :host .edge.top {
+        inset: 0;
+        height: auto;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: 50%;
+        -webkit-mask-image:
+          linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%),
+          linear-gradient(#000 0, #000 32px, transparent 32px, transparent calc(100% - 32px), #000 calc(100% - 32px), #000 100%);
+        -webkit-mask-composite: source-in;
+        mask-image:
+          linear-gradient(to right, transparent 0%, #000 18%, #000 82%, transparent 100%),
+          linear-gradient(#000 0, #000 32px, transparent 32px, transparent calc(100% - 32px), #000 calc(100% - 32px), #000 100%);
+        mask-composite: intersect;
+      }
       /* Clock is chrome, not a control — no press scale. */
       :host(:active) { transform: none; }
       @media (hover: hover) and (pointer: fine) {
