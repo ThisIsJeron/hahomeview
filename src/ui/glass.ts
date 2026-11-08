@@ -85,10 +85,11 @@ function glassRoot(root: string) {
     ${r} .fill {
       position: absolute;
       left: 0;
-      right: 0;
       bottom: 0;
       z-index: 2;
+      width: 100%;
       height: 0;
+      margin: 0;
       pointer-events: none;
       background: var(--fill-color);
       transition: height var(--duration) var(--ease-out);
