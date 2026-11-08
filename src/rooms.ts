@@ -50,6 +50,8 @@ export interface Tile {
   room?: string;
   /** Camera snapshot URL when the tile is a camera. */
   image?: string;
+  /** 0–100 bottom-up fill for dimmable entities. Absent when the entity has no level. */
+  fill?: number;
   entry: EntityEntry;
 }
 export interface Room {
@@ -132,6 +134,36 @@ export function stateActive(s: EntityState): boolean {
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, " ");
+
+/** 0–100 brightness for a dimmable light. Undefined when the light cannot be dimmed. Off is 0. */
+export function brightnessPercent(s: EntityState): number | undefined {
+  if (computeDomain(s.entity_id) !== "light") return undefined;
+  if (s.state === "unavailable" || s.state === "unknown") return undefined;
+  const a = s.attributes;
+  const canDim = ((a.supported_features ?? 0) & 1) === 1 || typeof a.brightness === "number";
+  if (!canDim) return undefined;
+  if (s.state !== "on") return 0;
+  if (typeof a.brightness !== "number") return 100;
+  return Math.max(0, Math.min(100, Math.round(a.brightness / 2.55)));
+}
+
+/** Bottom-up glass fill. A light is the full white veil or nothing; brightness is changed by holding, not drawn as a bar. */
+export function fillPercent(s: EntityState): number | undefined {
+  if (s.state === "unavailable" || s.state === "unknown") return undefined;
+  const domain = computeDomain(s.entity_id);
+  const a = s.attributes;
+  const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+  if (domain === "light") return undefined;
+  if (domain === "cover" && typeof a.current_position === "number") return clamp(a.current_position);
+  if (domain === "fan" && typeof a.percentage === "number") return clamp(a.percentage);
+  if (domain === "media_player" && typeof a.volume_level === "number" && s.state !== "off" && s.state !== "standby")
+    return clamp(a.volume_level * 100);
+  if (domain === "sensor" && a.device_class === "battery") {
+    const n = Number(s.state);
+    if (Number.isFinite(n)) return clamp(n);
+  }
+  return undefined;
+}
 
 export function stateText(s: EntityState): string {
   const a = s.attributes;
@@ -229,6 +261,7 @@ export function buildRooms(
       active: stateActive(s),
       state: s.state,
       stateText: stateText(s),
+      fill: fillPercent(s),
       room: area?.name,
       image: domain === "camera" && s.attributes.entity_picture ? s.attributes.entity_picture : undefined,
       entry,

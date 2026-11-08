@@ -1,4 +1,6 @@
 import { html, render } from "lit";
+import { applyGlassTransparency, readGlassTransparency } from "/src/glass-pref.ts";
+import { startLensTracking } from "/src/glass-lens.ts";
 import "/src/ui/hv-tile.ts";
 import "/src/ui/hv-clock.ts";
 import type { Tile } from "/src/rooms.ts";
@@ -13,7 +15,7 @@ const tiles: Array<Tile & { size?: "S" | "M" | "L"; wide?: boolean; big?: boolea
     group: "lights",
     active: true,
     state: "on",
-    stateText: "72%",
+    stateText: "On",
     room: "Kitchen",
     entry,
   },
@@ -81,7 +83,8 @@ const tiles: Array<Tile & { size?: "S" | "M" | "L"; wide?: boolean; big?: boolea
     group: "others",
     active: true,
     state: "on",
-    stateText: "On",
+    stateText: "75%",
+    fill: 75,
     room: "Bedroom",
     entry,
     big: true,
@@ -95,6 +98,7 @@ const tiles: Array<Tile & { size?: "S" | "M" | "L"; wide?: boolean; big?: boolea
     active: true,
     state: "open",
     stateText: "40% open",
+    fill: 40,
     room: "Office",
     entry,
   },
@@ -118,10 +122,22 @@ render(
   `,
   grid
 );
+startLensTracking();
 
 document.querySelectorAll<HTMLButtonElement>(".themes button").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.documentElement.dataset.theme = btn.dataset.theme ?? "dark";
   });
 });
-document.documentElement.dataset.theme = "dark";
+
+const params = new URLSearchParams(location.search);
+document.documentElement.dataset.theme = params.get("theme") ?? "dark";
+
+const range = document.querySelector<HTMLInputElement>("#glass-range")!;
+const out = document.querySelector<HTMLOutputElement>("#glass-out")!;
+const initial = params.has("glass") ? Number(params.get("glass")) : readGlassTransparency();
+range.value = String(initial);
+out.value = String(applyGlassTransparency(initial));
+range.addEventListener("input", () => {
+  out.value = String(applyGlassTransparency(Number(range.value)));
+});
