@@ -7,7 +7,7 @@ import type { Home, Tile } from "../rooms.ts";
 import { brightnessPercent, tapAction } from "../rooms.ts";
 import type { HA } from "../ha.ts";
 import { resolveIconName, iconPath, iconSvg } from "../icons.ts";
-import { loadLayouts, saveLayouts, orderTiles, move, nextSize, SPAN, type Layouts, type Size } from "../layout.ts";
+import { loadLayouts, saveLayouts, orderTiles, move, nextSize, sizeForSpan, SPAN, type Layouts, type Size } from "../layout.ts";
 import { glassChip, glassLayers } from "./glass.ts";
 import { pokeLens } from "../glass-lens.ts";
 
@@ -30,6 +30,7 @@ interface Press {
   sentLevel?: number;
 }
 interface Drag { id: string; page: string; left: number; top: number; w: number; h: number; dx: number; dy: number; last?: string }
+interface Resize { id: string; page: string; pointerId: number; left: number; top: number; x: number; y: number; moved: boolean }
 interface Dim { id: string; level: number }
 
 export class HvApp extends LitElement {
@@ -44,6 +45,7 @@ export class HvApp extends LitElement {
     _editing: { state: true },
     _layouts: { state: true },
     _drag: { state: true },
+    _resize: { state: true },
     _dim: { state: true },
   };
   declare home?: Home;
@@ -56,6 +58,7 @@ export class HvApp extends LitElement {
   declare _editing?: string; // page id in edit mode
   declare _layouts: Layouts;
   declare _drag?: Drag;
+  declare _resize?: Resize;
   /** Live brightness while a short-hold drag is dimming a light. */
   declare _dim?: Dim;
   private _press?: Press;
@@ -162,7 +165,30 @@ export class HvApp extends LitElement {
       justify-content: center;
     }
     .grid > * { min-width: 0; min-height: 0; }
+    .slot {
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+    }
+    .slot > hv-tile,
+    .slot > hv-clock { width: 100%; height: 100%; }
+    /* A tall cell stays two rows tall. The clock face stays a circle in the middle of it. */
+    .slot[data-shape="tall"] > hv-clock {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+      align-self: center;
+      justify-self: center;
+    }
+    .slot.editing { touch-action: none; }
+    .slot.dragging {
+      border-radius: var(--radius);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+    }
     hv-clock[editing] { touch-action: none; animation: wiggle 0.35s ease-in-out infinite; }
+    hv-tile[resizing],
+    hv-clock[resizing] { animation: none; }
     hv-clock[dragging] { opacity: 0.35; animation: none; }
     @keyframes wiggle { 0%, 100% { transform: rotate(-0.8deg); } 50% { transform: rotate(0.8deg); } }
     .ghost {
@@ -173,7 +199,9 @@ export class HvApp extends LitElement {
       border-radius: var(--radius);
       filter: drop-shadow(0 18px 36px var(--glass-shadow-lift));
     }
-    .ghost > * { width: 100%; height: 100%; }
+    .ghost { display: flex; align-items: center; justify-content: center; }
+    .ghost > hv-tile { width: 100%; height: 100%; }
+    .ghost > hv-clock { width: 100%; height: auto; aspect-ratio: 1; }
     .dots {
       position: fixed;
       left: 0;
@@ -234,12 +262,21 @@ export class HvApp extends LitElement {
     return s ? brightnessPercent(s) : undefined;
   }
 
+  private _isHandle(e: Event) {
+    return e.composedPath().some((n) => n instanceof HTMLElement && n.classList.contains("handle"));
+  }
+
   private _onDown(e: PointerEvent, id: string, page: string) {
     if (e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
     if (this._editing === page) {
       const r = el.getBoundingClientRect();
       try { el.setPointerCapture(e.pointerId); } catch {}
+      if (this._isHandle(e)) {
+        this._resize = { id, page, pointerId: e.pointerId, left: r.left, top: r.top, x: e.clientX, y: e.clientY, moved: false };
+        this._suppressClick = true;
+        return;
+      }
       this._press = { x: e.clientX, y: e.clientY, id, page, moved: false, pointerId: e.pointerId };
       this._drag = { id, page, left: r.left, top: r.top, w: r.width, h: r.height, dx: 0, dy: 0 };
       return;
@@ -277,6 +314,15 @@ export class HvApp extends LitElement {
   }
 
   private _onMove = (e: PointerEvent) => {
+    const rz = this._resize;
+    if (rz && rz.pointerId === e.pointerId) {
+      if (!rz.moved && Math.hypot(e.clientX - rz.x, e.clientY - rz.y) > 8) rz.moved = true;
+      if (rz.moved) {
+        const step = this._tile + GAP;
+        this._setSize(rz.page, rz.id, sizeForSpan((e.clientX - rz.left) / step, (e.clientY - rz.top) / step));
+      }
+      return;
+    }
     const p = this._press;
     if (!p) return;
     const dx = e.clientX - p.x;
@@ -333,6 +379,12 @@ export class HvApp extends LitElement {
   }
 
   private _onUp = () => {
+    if (this._resize) {
+      const rz = this._resize;
+      this._resize = undefined;
+      if (!rz.moved) this._cycleSize(rz.page, rz.id);
+      return;
+    }
     const p = this._press;
     this._press = undefined;
     if (!p) return;
@@ -357,9 +409,13 @@ export class HvApp extends LitElement {
     const ids = this._items(page).map((i) => i.id);
     this._save(page, { ...this._layout(page), order: move(ids, from, to) });
   }
-  private _cycleSize(page: string, id: string) {
+  private _setSize(page: string, id: string, size: Size) {
     const l = this._layout(page);
-    this._save(page, { ...l, sizes: { ...l.sizes, [id]: nextSize(l.sizes[id]) } });
+    if ((l.sizes[id] ?? "S") === size) return;
+    this._save(page, { ...l, sizes: { ...l.sizes, [id]: size } });
+  }
+  private _cycleSize(page: string, id: string) {
+    this._setSize(page, id, nextSize(this._layout(page).sizes[id]));
   }
   private _items(page: string): Item[] {
     if (!this.home) return [];
@@ -400,36 +456,48 @@ export class HvApp extends LitElement {
   private _grid(page: string, subtitle: "room" | "state") {
     const editing = this._editing === page;
     const sizes = this._layout(page).sizes;
-    const span = (id: string) => {
+    const spanOf = (id: string): [number, number] => {
       const [c, r] = SPAN[sizes[id] ?? "S"];
-      return `grid-column: span ${Math.min(c, this._cols)}; grid-row: span ${r}`;
+      return [Math.min(c, this._cols), r];
+    };
+    const span = (id: string) => {
+      const [c, r] = spanOf(id);
+      return `grid-column: span ${c}; grid-row: span ${r}`;
     };
     return html`<div class="grid">
       ${repeat(
         this._items(page),
         (i) => i.id,
-        (i) =>
-          "name" in i
-            ? html`<hv-tile
-                data-id=${i.id}
-                style=${span(i.id)}
-                .tile=${this._withDim(i)}
-                .iconPath=${this._icon(i)}
-                .size=${(sizes[i.id] ?? "S") as Size}
-                subtitle=${subtitle}
-                ?editing=${editing}
-                ?dragging=${this._drag?.id === i.id}
-                ?readonly=${!this.states[i.id] || !tapAction(this.states[i.id])}
-                @pointerdown=${(e: PointerEvent) => this._onDown(e, i.id, page)}
-                @click=${() => this._tap(i)}
-              ></hv-tile>`
-            : html`<hv-clock
-                data-id=${CLOCK}
-                style=${span(CLOCK)}
-                ?editing=${editing}
-                ?dragging=${this._drag?.id === CLOCK}
-                @pointerdown=${(e: PointerEvent) => this._onDown(e, CLOCK, page)}
-              ></hv-clock>`
+        (i) => {
+          const [cols, rows] = spanOf(i.id);
+          const dragging = this._drag?.id === i.id;
+          return html`<div
+            class="slot ${editing ? "editing" : ""} ${dragging ? "dragging" : ""}"
+            data-id=${i.id}
+            data-shape=${rows > cols ? "tall" : "square"}
+            style=${span(i.id)}
+            @pointerdown=${(e: PointerEvent) => this._onDown(e, i.id, page)}
+          >
+            ${"name" in i
+              ? html`<hv-tile
+                  .tile=${this._withDim(i)}
+                  .iconPath=${this._icon(i)}
+                  .size=${(sizes[i.id] ?? "S") as Size}
+                  subtitle=${subtitle}
+                  ?editing=${editing}
+                  ?dragging=${dragging}
+                  ?resizing=${this._resize?.id === i.id}
+                  ?readonly=${!this.states[i.id] || !tapAction(this.states[i.id])}
+                  @click=${() => this._tap(i)}
+                ></hv-tile>`
+              : html`<hv-clock
+                  .size=${(sizes[i.id] ?? "S") as Size}
+                  ?editing=${editing}
+                  ?dragging=${dragging}
+                  ?resizing=${this._resize?.id === i.id}
+                ></hv-clock>`}
+          </div>`;
+        }
       )}
     </div>`;
   }

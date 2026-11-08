@@ -1,9 +1,12 @@
 import { LitElement, html, css, svg } from "lit";
 import { glass, glassLayers } from "./glass.ts";
+import { editChrome, editHandle } from "./edit-chrome.ts";
+import { SIZE_LABEL, type Size } from "../layout.ts";
 
 export class HvClock extends LitElement {
-  static properties = { _now: { state: true } };
+  static properties = { _now: { state: true }, size: { reflect: true } };
   declare _now: Date;
+  declare size: Size;
   private _timer?: ReturnType<typeof setInterval>;
 
   constructor() {
@@ -33,6 +36,7 @@ export class HvClock extends LitElement {
 
   static styles = [
     glass,
+    editChrome,
     css`
       :host {
         --radius: 50%;
@@ -65,6 +69,31 @@ export class HvClock extends LitElement {
       }
       /* Clock is chrome, not a control — no press scale. */
       :host(:active) { transform: none; }
+      :host([resizing]) { animation: none; }
+      /* The square corner sits outside the round face, so the handle and label stay on the disc. */
+      .handle { right: 18%; bottom: 18%; }
+      .badge {
+        display: none;
+        position: absolute;
+        top: 16%;
+        right: 18%;
+        z-index: 7;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 11px;
+        background: rgba(28, 28, 30, 0.78);
+        color: #f2f2f7;
+        font-size: 12px;
+        font-weight: 700;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      :host([editing]) .badge { display: flex; }
+      @media (prefers-color-scheme: dark) {
+        .badge { background: rgba(245, 245, 247, 0.88); color: #1c1c1e; }
+      }
       @media (hover: hover) and (pointer: fine) {
         :host(:hover) { box-shadow: var(--glass-shadow-stack); }
       }
@@ -102,7 +131,7 @@ export class HvClock extends LitElement {
       ${hand(m * 6, 32, 2.05)}
       ${hand(s * 6, 40, 0.85)}
       <circle class="hub" cx="50" cy="50" r="1.7" />
-    </svg>`;
+    </svg>${editHandle}<span class="badge">${SIZE_LABEL[this.size ?? "S"]}</span>`;
   }
 }
 customElements.define("hv-clock", HvClock);
