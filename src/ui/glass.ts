@@ -95,28 +95,6 @@ function glassRoot(root: string) {
       transition: height var(--duration) var(--ease-out);
     }
 
-    /* Bevel: bright along the top and left, shaded along the bottom. */
-    ${r}::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      z-index: 3;
-      pointer-events: none;
-      border-radius: inherit;
-      padding: 1.5px;
-      background: linear-gradient(
-        160deg,
-        rgba(255, 255, 255, 0.95) 0%,
-        rgba(255, 255, 255, 0.28) 28%,
-        rgba(255, 255, 255, 0.08) 62%,
-        rgba(255, 255, 255, 0.45) 100%
-      );
-      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      -webkit-mask-composite: xor;
-      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-      mask-composite: exclude;
-    }
-
     ${r}::after {
       content: "";
       position: absolute;
