@@ -91,8 +91,6 @@ function glassRoot(root: string) {
       height: 0;
       pointer-events: none;
       background: var(--fill-color);
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
-      mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 100%);
       transition: height var(--duration) var(--ease-out);
     }
 
