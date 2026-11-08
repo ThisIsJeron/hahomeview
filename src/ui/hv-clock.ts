@@ -37,13 +37,20 @@ export class HvClock extends LitElement {
       :host {
         --radius: 50%;
         --surface-alpha: 0.18;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: block;
         aspect-ratio: 1;
         overflow: hidden;
         cursor: default;
         color: #fff;
+      }
+      /* The shared glass inset uses a corner radius, which turns this disc into a squircle. */
+      :host .lens {
+        border-radius: 50%;
+        padding: 5%;
+      }
+      :host .surface {
+        inset: 1px;
+        border-radius: 50%;
       }
       /* Clock is chrome, not a control — no press scale. */
       :host(:active) { transform: none; }
@@ -51,13 +58,14 @@ export class HvClock extends LitElement {
         :host(:hover) { box-shadow: var(--glass-shadow-stack); }
       }
       .face-svg {
-        position: relative;
+        position: absolute;
+        inset: 0;
         z-index: 5;
-        width: 78%;
-        height: 78%;
-        filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.7));
+        width: 100%;
+        height: 100%;
+        filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
       }
-      .ring { fill: none; stroke: #fff; stroke-width: 1.25; }
+      .ring { fill: none; stroke: #fff; stroke-width: 0.9; }
       .tick { stroke: #fff; stroke-linecap: round; }
       .hand { stroke: #fff; stroke-linecap: round; }
       .hub { fill: #fff; }
@@ -74,16 +82,16 @@ export class HvClock extends LitElement {
     const ticks = [...Array(12)].map((_, i) => {
       const a = (i * Math.PI) / 6;
       const major = i % 3 === 0;
-      const inner = major ? 34 : 39;
-      const outer = 45.2;
-      return svg`<line class="tick" x1="${50 + inner * Math.sin(a)}" y1="${50 - inner * Math.cos(a)}" x2="${50 + outer * Math.sin(a)}" y2="${50 - outer * Math.cos(a)}" stroke-width="${major ? 2.6 : 1.35}"/>`;
+      const inner = major ? 37 : 43.4;
+      const outer = 47.2;
+      return svg`<line class="tick" x1="${50 + inner * Math.sin(a)}" y1="${50 - inner * Math.cos(a)}" x2="${50 + outer * Math.sin(a)}" y2="${50 - outer * Math.cos(a)}" stroke-width="${major ? 2.15 : 1.55}"/>`;
     });
     return html`${glassLayers()}<svg class="face-svg" viewBox="0 0 100 100">
-      <circle class="ring" cx="50" cy="50" r="46" />
+      <circle class="ring" cx="50" cy="50" r="48.4" />
       ${ticks}
-      ${hand(h * 30, 18, 3.4)}
-      ${hand(m * 6, 28, 2.2)}
-      <circle class="hub" cx="50" cy="50" r="2.1" />
+      ${hand(h * 30, 20, 3.1)}
+      ${hand(m * 6, 32, 2.05)}
+      <circle class="hub" cx="50" cy="50" r="1.7" />
     </svg>`;
   }
 }
