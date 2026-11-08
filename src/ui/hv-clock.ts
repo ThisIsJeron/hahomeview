@@ -43,13 +43,8 @@ export class HvClock extends LitElement {
         cursor: default;
         color: #fff;
       }
-      /* The shared glass inset uses a corner radius, which turns this disc into a squircle. */
-      :host .lens {
-        border-radius: 50%;
-        padding: 5%;
-      }
+      :host .lens,
       :host .surface {
-        inset: 1px;
         border-radius: 50%;
       }
       /* Clock is chrome, not a control — no press scale. */

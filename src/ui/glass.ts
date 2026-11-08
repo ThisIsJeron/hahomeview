@@ -46,8 +46,8 @@ function glassRoot(root: string) {
 
     /*
      * Rim refraction. A magnified, edge-displaced copy of the wallpaper is
-     * masked to a band that follows the real corner radius. The frosted
-     * surface sits inside that band so the bend stays visible.
+     * masked to a thin band on the real corner radius. The frosted surface
+     * covers the whole shape, out to that same edge.
      */
     ${r} .lens {
       position: absolute;
@@ -55,7 +55,7 @@ function glassRoot(root: string) {
       z-index: 0;
       pointer-events: none;
       border-radius: inherit;
-      padding: 12px;
+      padding: 0;
       background: var(--wallpaper);
       background-attachment: scroll;
       background-size: var(--wallpaper-lens-size, calc(var(--lens-scale) * 100vw) calc(var(--lens-scale) * 100vh));
@@ -69,12 +69,12 @@ function glassRoot(root: string) {
 
     ${r} .surface {
       position: absolute;
-      inset: 8px;
+      inset: 0;
       z-index: 1;
       pointer-events: none;
-      border-radius: calc(var(--radius) - 8px);
+      border-radius: inherit;
       background: rgba(255, 255, 255, min(1, calc(var(--surface-alpha) * var(--glass-clear-factor))));
-      box-shadow: 0 0 10px 5px rgba(255, 255, 255, min(1, calc(var(--surface-alpha) * var(--glass-clear-factor))));
+      box-shadow: none;
       -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
       backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
       transition: background var(--duration) var(--ease-out), box-shadow var(--duration) var(--ease-out);
