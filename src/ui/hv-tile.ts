@@ -11,7 +11,7 @@ export class HvTile extends LitElement {
   declare iconPath?: string;
   /** "room" on the Home page, "state" inside a room. */
   declare subtitle: "room" | "state";
-  declare size: "S" | "M" | "L";
+  declare size: Size;
 
   static styles = [
     glass,
@@ -131,10 +131,13 @@ export class HvTile extends LitElement {
       }
       .sub:empty { display: none; }
 
-      /* M is a tall 1×2. L is a square 2×2. Keep the icon square in both. */
+      /* W is a wide 2×1: icon on the left. M is a tall 1×2. L is 2×2. */
+      :host([size="W"]) .body { flex-direction: row; gap: 14px; padding: 14px 20px; text-align: left; }
+      :host([size="W"]) .icon { width: auto; height: 52%; aspect-ratio: 1; margin: 0; flex: none; }
+      :host([size="W"]) .text { width: auto; flex: 1; min-width: 0; text-align: left; }
+      :host([size="W"]) .name, :host([size="M"]) .name, :host([size="L"]) .name { font-size: 16px; }
+      :host([size="W"]) .sub, :host([size="M"]) .sub, :host([size="L"]) .sub { font-size: 13px; }
       :host([size="M"]) .icon { width: 42%; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
-      :host([size="M"]) .name, :host([size="L"]) .name { font-size: 16px; }
-      :host([size="M"]) .sub, :host([size="L"]) .sub { font-size: 13px; }
       :host([size="L"]) .icon { width: 32%; height: auto; aspect-ratio: 1; margin-bottom: 10px; }
 
       /* Edit mode: wiggle, size badge, no browser scrolling on the tile. */

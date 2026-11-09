@@ -30,7 +30,7 @@ interface Press {
   sentLevel?: number;
 }
 interface Drag { id: string; page: string; left: number; top: number; w: number; h: number; dx: number; dy: number; last?: string }
-interface Resize { id: string; page: string; pointerId: number; left: number; top: number; x: number; y: number; moved: boolean }
+interface Resize { id: string; page: string; pointerId: number; left: number; top: number; x: number; y: number; lx: number; ly: number; moved: boolean }
 interface Dim { id: string; level: number }
 
 export class HvApp extends LitElement {
@@ -85,6 +85,8 @@ export class HvApp extends LitElement {
   updated() {
     this._measure();
     pokeLens();
+    // A render rewrites the slot's style attribute and would drop the live scale.
+    if (this._resize?.moved) this._previewResize(this._resize);
   }
 
   /** Fit the grid to the device: tiles are about a third of the short side, never under 150px. */
@@ -173,10 +175,17 @@ export class HvApp extends LitElement {
     }
     .slot > hv-tile,
     .slot > hv-clock { width: 100%; height: 100%; }
-    /* A tall cell stays two rows tall. The clock face stays a circle in the middle of it. */
+    /* A non-square cell keeps the clock a circle, centered in the cell. */
     .slot[data-shape="tall"] > hv-clock {
       width: 100%;
       height: auto;
+      aspect-ratio: 1;
+      align-self: center;
+      justify-self: center;
+    }
+    .slot[data-shape="wide"] > hv-clock {
+      width: auto;
+      height: 100%;
       aspect-ratio: 1;
       align-self: center;
       justify-self: center;
@@ -273,7 +282,7 @@ export class HvApp extends LitElement {
       const r = el.getBoundingClientRect();
       try { el.setPointerCapture(e.pointerId); } catch {}
       if (this._isHandle(e)) {
-        this._resize = { id, page, pointerId: e.pointerId, left: r.left, top: r.top, x: e.clientX, y: e.clientY, moved: false };
+        this._resize = { id, page, pointerId: e.pointerId, left: r.left, top: r.top, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
         this._suppressClick = true;
         return;
       }
@@ -297,7 +306,7 @@ export class HvApp extends LitElement {
       return;
     }
     p.armed = true;
-    const el = (this.renderRoot as ShadowRoot).querySelector(`[data-id="${p.id}"]`) as HTMLElement | null;
+    const el = this._slot(p.page, p.id);
     try { el?.setPointerCapture(p.pointerId); } catch {}
     p.timer = setTimeout(() => {
       if (this._press && !this._press.moved) this._beginEdit(this._press);
@@ -316,11 +325,10 @@ export class HvApp extends LitElement {
   private _onMove = (e: PointerEvent) => {
     const rz = this._resize;
     if (rz && rz.pointerId === e.pointerId) {
+      rz.lx = e.clientX;
+      rz.ly = e.clientY;
       if (!rz.moved && Math.hypot(e.clientX - rz.x, e.clientY - rz.y) > 8) rz.moved = true;
-      if (rz.moved) {
-        const step = this._tile + GAP;
-        this._setSize(rz.page, rz.id, sizeForSpan((e.clientX - rz.left) / step, (e.clientY - rz.top) / step));
-      }
+      if (rz.moved) this._previewResize(rz);
       return;
     }
     const p = this._press;
@@ -382,7 +390,18 @@ export class HvApp extends LitElement {
     if (this._resize) {
       const rz = this._resize;
       this._resize = undefined;
-      if (!rz.moved) this._cycleSize(rz.page, rz.id);
+      if (!rz.moved) {
+        this._cycleSize(rz.page, rz.id);
+        return;
+      }
+      // Put the finger's box back in case a render cleared it, then measure that box.
+      this._previewResize(rz);
+      const step = this._tile + GAP;
+      this._commitLayout(rz.page, () => {
+        const size = sizeForSpan((rz.lx - rz.left) / step, (rz.ly - rz.top) / step);
+        const l = this._layout(rz.page);
+        if ((l.sizes[rz.id] ?? "S") !== size) this._save(rz.page, { ...l, sizes: { ...l.sizes, [rz.id]: size } });
+      });
       return;
     }
     const p = this._press;
@@ -412,7 +431,97 @@ export class HvApp extends LitElement {
   private _setSize(page: string, id: string, size: Size) {
     const l = this._layout(page);
     if ((l.sizes[id] ?? "S") === size) return;
-    this._save(page, { ...l, sizes: { ...l.sizes, [id]: size } });
+    this._commitLayout(page, () => this._save(page, { ...l, sizes: { ...l.sizes, [id]: size } }));
+  }
+
+  /** The tile under the finger scales with it. On release the grid eases into that size. */
+  private _previewResize(rz: Resize) {
+    const el = this._slot(rz.page, rz.id);
+    if (!el) return;
+    const [c, r] = SPAN[this._layout(rz.page).sizes[rz.id] ?? "S"] ?? SPAN.S;
+    const layoutW = c * this._tile + (c - 1) * GAP;
+    const layoutH = r * this._tile + (r - 1) * GAP;
+    const step = this._tile + GAP;
+    const min = this._tile * 0.72;
+    const max = step + this._tile + 24;
+    const w = Math.max(min, Math.min(max, rz.lx - rz.left));
+    const h = Math.max(min, Math.min(max, rz.ly - rz.top));
+    el.style.transformOrigin = "top left";
+    el.style.transition = "none";
+    el.style.zIndex = "4";
+    el.style.transform = `scale(${w / layoutW}, ${h / layoutH})`;
+  }
+
+  /** The slot on one page. The same entity can sit on Home and in its room. */
+  private _slot(page: string, id: string): HTMLElement | null {
+    const root = this.renderRoot as ShadowRoot;
+    const grid = root.querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+    return grid?.querySelector(`.slot[data-id="${CSS.escape(id)}"]`) ?? null;
+  }
+
+  private _flipGen = 0;
+  /** Measure one page's slots, then after the next render ease them into the new grid. */
+  private _flipSlots(page: string) {
+    const grid = (this.renderRoot as ShadowRoot).querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+    const first = new Map<string, DOMRect>();
+    for (const el of grid?.querySelectorAll<HTMLElement>(".slot") ?? []) {
+      if (el.dataset.id) first.set(el.dataset.id, el.getBoundingClientRect());
+    }
+    const gen = ++this._flipGen;
+    return () => {
+      if (gen !== this._flipGen) return;
+      const gridNow = (this.renderRoot as ShadowRoot).querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+      const slots = [...(gridNow?.querySelectorAll<HTMLElement>(".slot") ?? [])];
+      for (const el of slots) {
+        el.style.transition = "none";
+        el.style.transform = "";
+      }
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      gridNow?.getBoundingClientRect();
+      if (reduce) {
+        for (const el of slots) el.style.zIndex = "";
+        return;
+      }
+      for (const el of slots) {
+        const id = el.dataset.id;
+        const a = id ? first.get(id) : undefined;
+        if (!a) continue;
+        const b = el.getBoundingClientRect();
+        const dx = a.left - b.left;
+        const dy = a.top - b.top;
+        const sx = b.width > 0 ? a.width / b.width : 1;
+        const sy = b.height > 0 ? a.height / b.height : 1;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.02 && Math.abs(sy - 1) < 0.02) {
+          el.style.zIndex = "";
+          continue;
+        }
+        el.style.transformOrigin = "top left";
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+        el.style.zIndex = "3";
+      }
+      // Flush the inverted boxes so the transition starts at the finger, not the new cell.
+      slots[0]?.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        if (gen !== this._flipGen) return;
+        for (const el of slots) {
+          if (!el.style.transform) continue;
+          el.style.transition = "transform var(--duration) var(--ease-out)";
+          el.style.transform = "";
+          const done = () => {
+            el.style.transition = "";
+            el.style.zIndex = "";
+            el.removeEventListener("transitionend", done);
+          };
+          el.addEventListener("transitionend", done);
+        }
+      });
+    };
+  }
+
+  private _commitLayout(page: string, change: () => void) {
+    const play = this._flipSlots(page);
+    change();
+    this.updateComplete.then(play);
   }
   private _cycleSize(page: string, id: string) {
     this._setSize(page, id, nextSize(this._layout(page).sizes[id]));
@@ -457,14 +566,14 @@ export class HvApp extends LitElement {
     const editing = this._editing === page;
     const sizes = this._layout(page).sizes;
     const spanOf = (id: string): [number, number] => {
-      const [c, r] = SPAN[sizes[id] ?? "S"];
+      const [c, r] = SPAN[sizes[id] ?? "S"] ?? SPAN.S;
       return [Math.min(c, this._cols), r];
     };
     const span = (id: string) => {
       const [c, r] = spanOf(id);
       return `grid-column: span ${c}; grid-row: span ${r}`;
     };
-    return html`<div class="grid">
+    return html`<div class="grid" data-page=${page}>
       ${repeat(
         this._items(page),
         (i) => i.id,
@@ -474,7 +583,7 @@ export class HvApp extends LitElement {
           return html`<div
             class="slot ${editing ? "editing" : ""} ${dragging ? "dragging" : ""}"
             data-id=${i.id}
-            data-shape=${rows > cols ? "tall" : "square"}
+            data-shape=${rows > cols ? "tall" : cols > rows ? "wide" : "square"}
             style=${span(i.id)}
             @pointerdown=${(e: PointerEvent) => this._onDown(e, i.id, page)}
           >
