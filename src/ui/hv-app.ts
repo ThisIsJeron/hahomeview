@@ -4,17 +4,34 @@ import type { HassEntities } from "home-assistant-js-websocket";
 import "./hv-clock.ts";
 import "./hv-tile.ts";
 import type { Home, Tile } from "../rooms.ts";
-import { tapAction } from "../rooms.ts";
+import { brightnessPercent, tapAction } from "../rooms.ts";
 import type { HA } from "../ha.ts";
 import { resolveIconName, iconPath, iconSvg } from "../icons.ts";
-import { loadLayouts, saveLayouts, orderTiles, move, nextSize, SPAN, type Layouts, type Size } from "../layout.ts";
+import { loadLayouts, saveLayouts, orderTiles, move, nextSize, sizeForSpan, SPAN, type Layouts, type Size } from "../layout.ts";
+import { glassChip, glassLayers } from "./glass.ts";
+import { pokeLens } from "../glass-lens.ts";
 
 const CLOCK = "clock";
 type Item = Tile | { id: typeof CLOCK };
 const GAP = 14;
 
-interface Press { x: number; y: number; id: string; page: string; moved: boolean; timer?: ReturnType<typeof setTimeout> }
+interface Press {
+  x: number;
+  y: number;
+  id: string;
+  page: string;
+  moved: boolean;
+  pointerId: number;
+  /** Starting brightness when this press can dim. Absent for everything else. */
+  dimFrom?: number;
+  armed?: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  sentAt?: number;
+  sentLevel?: number;
+}
 interface Drag { id: string; page: string; left: number; top: number; w: number; h: number; dx: number; dy: number; last?: string }
+interface Resize { id: string; page: string; pointerId: number; left: number; top: number; x: number; y: number; lx: number; ly: number; moved: boolean }
+interface Dim { id: string; level: number }
 
 export class HvApp extends LitElement {
   static properties = {
@@ -28,6 +45,8 @@ export class HvApp extends LitElement {
     _editing: { state: true },
     _layouts: { state: true },
     _drag: { state: true },
+    _resize: { state: true },
+    _dim: { state: true },
   };
   declare home?: Home;
   declare states: HassEntities;
@@ -39,6 +58,9 @@ export class HvApp extends LitElement {
   declare _editing?: string; // page id in edit mode
   declare _layouts: Layouts;
   declare _drag?: Drag;
+  declare _resize?: Resize;
+  /** Live brightness while a short-hold drag is dimming a light. */
+  declare _dim?: Dim;
   private _press?: Press;
   private _suppressClick = false;
   private _cols = 3;
@@ -62,6 +84,9 @@ export class HvApp extends LitElement {
   }
   updated() {
     this._measure();
+    pokeLens();
+    // A render rewrites the slot's style attribute and would drop the live scale.
+    if (this._resize?.moved) this._previewResize(this._resize);
   }
 
   /** Fit the grid to the device: tiles are about a third of the short side, never under 150px. */
@@ -79,7 +104,9 @@ export class HvApp extends LitElement {
     this.style.setProperty("--tile", `${tile}px`);
   }
 
-  static styles = css`
+  static styles = [
+    glassChip,
+    css`
     :host { display: block; height: 100%; --cols: 3; --tile: 180px; }
     * { box-sizing: border-box; }
     .pages {
@@ -100,25 +127,132 @@ export class HvApp extends LitElement {
       padding: calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px)
         calc(env(safe-area-inset-bottom) + 40px) calc(env(safe-area-inset-left) + 16px);
     }
-    h1 { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 6px 14px; font-size: 28px; font-weight: 700; letter-spacing: -0.3px; }
+    h1 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 4px 6px 14px;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.35px;
+    }
     h1 span { font-size: 20px; font-weight: 500; color: var(--text-2); }
-    h1 button { font: inherit; font-size: 17px; font-weight: 600; color: var(--tint-text); background: var(--tint); border: 0; border-radius: 16px; padding: 4px 14px; cursor: pointer; }
-    .grid { display: grid; grid-template-columns: repeat(var(--cols), var(--tile)); grid-auto-rows: var(--tile); gap: ${GAP}px; justify-content: center; }
+    .glass-chip {
+      --radius: 980px;
+      --glass-rim: 2px;
+      --glass-lens: 1;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      padding: 7px 14px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      color: var(--text);
+      cursor: pointer;
+      flex: none;
+    }
+    .glass-chip > span,
+    .glass-chip > input { position: relative; z-index: 5; }
+    h1 button.glass-chip { font-size: 16px; font-weight: 600; padding: 6px 16px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(var(--cols), var(--tile));
+      grid-auto-rows: var(--tile);
+      gap: ${GAP}px;
+      justify-content: center;
+    }
     .grid > * { min-width: 0; min-height: 0; }
+    .slot {
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+    }
+    .slot > hv-tile,
+    .slot > hv-clock { width: 100%; height: 100%; }
+    /* A non-square cell keeps the clock a circle, centered in the cell. */
+    .slot[data-shape="tall"] > hv-clock {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1;
+      align-self: center;
+      justify-self: center;
+    }
+    .slot[data-shape="wide"] > hv-clock {
+      width: auto;
+      height: 100%;
+      aspect-ratio: 1;
+      align-self: center;
+      justify-self: center;
+    }
+    .slot.editing { touch-action: none; }
+    .slot.dragging {
+      border-radius: var(--radius);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+    }
     hv-clock[editing] { touch-action: none; animation: wiggle 0.35s ease-in-out infinite; }
-    hv-clock[dragging] { opacity: 0.3; animation: none; }
+    hv-tile[resizing],
+    hv-clock[resizing] { animation: none; }
+    hv-clock[dragging] { opacity: 0.35; animation: none; }
     @keyframes wiggle { 0%, 100% { transform: rotate(-0.8deg); } 50% { transform: rotate(0.8deg); } }
-    .ghost { position: fixed; z-index: 10; pointer-events: none; transform: scale(1.06); box-shadow: 0 16px 40px rgba(0,0,0,0.35); border-radius: var(--radius); }
-    .ghost > * { width: 100%; height: 100%; }
-    .dots { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 12px); display: flex; justify-content: center; gap: 7px; pointer-events: none; }
-    .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--text); opacity: 0.25; }
-    .dots i.on { opacity: 0.8; }
-    .pill { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 17px; color: var(--text-2); padding: 24px; text-align: center; }
-  `;
+    .ghost {
+      position: fixed;
+      z-index: 10;
+      pointer-events: none;
+      transform: scale(1.05);
+      border-radius: var(--radius);
+      filter: drop-shadow(0 18px 36px var(--glass-shadow-lift));
+    }
+    .ghost { display: flex; align-items: center; justify-content: center; }
+    .ghost > hv-tile { width: 100%; height: 100%; }
+    .ghost > hv-clock { width: 100%; height: auto; aspect-ratio: 1; }
+    .dots {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: calc(env(safe-area-inset-bottom) + 12px);
+      display: flex;
+      justify-content: center;
+      gap: 7px;
+      pointer-events: none;
+    }
+    .dots i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text);
+      opacity: 0.22;
+      transition: opacity var(--duration) var(--ease-out), transform var(--duration) var(--ease-out);
+    }
+    .dots i.on { opacity: 0.85; transform: scale(1.15); }
+    .pill {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      color: var(--text-2);
+      padding: 24px;
+      text-align: center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dots i { transition: none; }
+      hv-clock[editing] { animation: none; }
+      .dots i.on { transform: none; }
+    }
+  `,
+  ];
 
   private _onScroll(e: Event) {
     const el = e.currentTarget as HTMLElement;
     this._page = Math.round(el.scrollLeft / el.clientWidth);
+    pokeLens();
   }
 
   private _tap(tile: Tile) {
@@ -131,28 +265,72 @@ export class HvApp extends LitElement {
     if (action && this.ha) this.ha.call(action, tile.id).catch(console.error);
   }
 
-  // ---- long press -> edit mode; in edit mode: drag to reorder, tap to cycle size ----
+  // ---- short hold + vertical drag dims a light; a still long press edits; tap toggles ----
+  private _brightnessOf(id: string): number | undefined {
+    const s = this.states[id];
+    return s ? brightnessPercent(s) : undefined;
+  }
+
+  private _isHandle(e: Event) {
+    return e.composedPath().some((n) => n instanceof HTMLElement && n.classList.contains("handle"));
+  }
+
   private _onDown(e: PointerEvent, id: string, page: string) {
     if (e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
     if (this._editing === page) {
       const r = el.getBoundingClientRect();
       try { el.setPointerCapture(e.pointerId); } catch {}
-      this._press = { x: e.clientX, y: e.clientY, id, page, moved: false };
+      if (this._isHandle(e)) {
+        this._resize = { id, page, pointerId: e.pointerId, left: r.left, top: r.top, x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
+        this._suppressClick = true;
+        return;
+      }
+      this._press = { x: e.clientX, y: e.clientY, id, page, moved: false, pointerId: e.pointerId };
       this._drag = { id, page, left: r.left, top: r.top, w: r.width, h: r.height, dx: 0, dy: 0 };
       return;
     }
+    const dimFrom = this._brightnessOf(id);
     this._press = {
-      x: e.clientX, y: e.clientY, id, page, moved: false,
-      timer: setTimeout(() => {
-        this._press = undefined;
-        this._suppressClick = true;
-        this._editing = page;
-        (navigator as any).vibrate?.(10);
-      }, 500),
+      x: e.clientX, y: e.clientY, id, page, moved: false, pointerId: e.pointerId,
+      dimFrom,
+      timer: setTimeout(() => this._onHold(), dimFrom == null ? 500 : 180),
     };
   }
+
+  private _onHold() {
+    const p = this._press;
+    if (!p || p.moved || this._editing) return;
+    if (p.dimFrom == null) {
+      this._beginEdit(p);
+      return;
+    }
+    p.armed = true;
+    const el = this._slot(p.page, p.id);
+    try { el?.setPointerCapture(p.pointerId); } catch {}
+    p.timer = setTimeout(() => {
+      if (this._press && !this._press.moved) this._beginEdit(this._press);
+    }, 320);
+  }
+
+  private _beginEdit(p: Press) {
+    clearTimeout(p.timer);
+    this._press = undefined;
+    this._dim = undefined;
+    this._suppressClick = true;
+    this._editing = p.page;
+    (navigator as any).vibrate?.(10);
+  }
+
   private _onMove = (e: PointerEvent) => {
+    const rz = this._resize;
+    if (rz && rz.pointerId === e.pointerId) {
+      rz.lx = e.clientX;
+      rz.ly = e.clientY;
+      if (!rz.moved && Math.hypot(e.clientX - rz.x, e.clientY - rz.y) > 8) rz.moved = true;
+      if (rz.moved) this._previewResize(rz);
+      return;
+    }
     const p = this._press;
     if (!p) return;
     const dx = e.clientX - p.x;
@@ -160,10 +338,21 @@ export class HvApp extends LitElement {
     if (!p.moved && Math.hypot(dx, dy) > 8) {
       p.moved = true;
       clearTimeout(p.timer);
-      if (!this._drag) {
-        this._press = undefined; // it was a scroll, not a long press
+      if (p.armed && p.dimFrom != null) {
+        this._suppressClick = true;
+        if (e.cancelable) e.preventDefault();
+        this._slideDim(p, e.clientY);
         return;
       }
+      if (!this._drag) {
+        this._press = undefined; // it was a scroll, not a hold
+        return;
+      }
+    }
+    if (p.armed && p.moved && p.dimFrom != null) {
+      if (e.cancelable) e.preventDefault();
+      this._slideDim(p, e.clientY);
+      return;
     }
     if (!this._drag || !p.moved) return;
     this._drag = { ...this._drag, dx, dy };
@@ -175,11 +364,53 @@ export class HvApp extends LitElement {
       this._reorder(p.page, this._drag.id, target);
     }
   };
+
+  /** Up raises the level, down lowers it. One tile-height of travel covers the whole 0–100 range. */
+  private _slideDim(p: Press, clientY: number) {
+    const travel = Math.max(120, this._tile);
+    const level = Math.max(0, Math.min(100, Math.round(p.dimFrom! + ((p.y - clientY) / travel) * 100)));
+    this._dim = { id: p.id, level };
+    this._pushDim(p, level, false);
+  }
+
+  private _pushDim(p: Press, level: number, done: boolean) {
+    if (!this.ha) return;
+    const now = performance.now();
+    if (!done && p.sentLevel === level) return;
+    if (!done && p.sentAt && now - p.sentAt < 80) return;
+    p.sentAt = now;
+    p.sentLevel = level;
+    const call = level <= 0
+      ? this.ha.call({ domain: "light", service: "turn_off" }, p.id)
+      : this.ha.call({ domain: "light", service: "turn_on" }, p.id, { brightness_pct: level });
+    call.catch(console.error);
+  }
+
   private _onUp = () => {
+    if (this._resize) {
+      const rz = this._resize;
+      this._resize = undefined;
+      if (!rz.moved) {
+        this._cycleSize(rz.page, rz.id);
+        return;
+      }
+      // Put the finger's box back in case a render cleared it, then measure that box.
+      this._previewResize(rz);
+      const step = this._tile + GAP;
+      this._commitLayout(rz.page, () => {
+        const size = sizeForSpan((rz.lx - rz.left) / step, (rz.ly - rz.top) / step);
+        const l = this._layout(rz.page);
+        if ((l.sizes[rz.id] ?? "S") !== size) this._save(rz.page, { ...l, sizes: { ...l.sizes, [rz.id]: size } });
+      });
+      return;
+    }
     const p = this._press;
     this._press = undefined;
     if (!p) return;
     clearTimeout(p.timer);
+    if (p.armed && p.moved && this._dim) this._pushDim(p, this._dim.level, true);
+    if (!p.moved) this._dim = undefined;
+    else if (p.armed) this._dim = undefined;
     if (this._drag) {
       if (!p.moved) this._cycleSize(p.page, p.id);
       this._drag = undefined;
@@ -197,14 +428,121 @@ export class HvApp extends LitElement {
     const ids = this._items(page).map((i) => i.id);
     this._save(page, { ...this._layout(page), order: move(ids, from, to) });
   }
-  private _cycleSize(page: string, id: string) {
+  private _setSize(page: string, id: string, size: Size) {
     const l = this._layout(page);
-    this._save(page, { ...l, sizes: { ...l.sizes, [id]: nextSize(l.sizes[id]) } });
+    if ((l.sizes[id] ?? "S") === size) return;
+    this._commitLayout(page, () => this._save(page, { ...l, sizes: { ...l.sizes, [id]: size } }));
+  }
+
+  /** The tile under the finger scales with it. On release the grid eases into that size. */
+  private _previewResize(rz: Resize) {
+    const el = this._slot(rz.page, rz.id);
+    if (!el) return;
+    const [c, r] = SPAN[this._layout(rz.page).sizes[rz.id] ?? "S"] ?? SPAN.S;
+    const layoutW = c * this._tile + (c - 1) * GAP;
+    const layoutH = r * this._tile + (r - 1) * GAP;
+    const step = this._tile + GAP;
+    const min = this._tile * 0.72;
+    const max = step + this._tile + 24;
+    const w = Math.max(min, Math.min(max, rz.lx - rz.left));
+    const h = Math.max(min, Math.min(max, rz.ly - rz.top));
+    el.style.transformOrigin = "top left";
+    el.style.transition = "none";
+    el.style.zIndex = "4";
+    el.style.transform = `scale(${w / layoutW}, ${h / layoutH})`;
+  }
+
+  /** The slot on one page. The same entity can sit on Home and in its room. */
+  private _slot(page: string, id: string): HTMLElement | null {
+    const root = this.renderRoot as ShadowRoot;
+    const grid = root.querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+    return grid?.querySelector(`.slot[data-id="${CSS.escape(id)}"]`) ?? null;
+  }
+
+  private _flipGen = 0;
+  /** Measure one page's slots, then after the next render ease them into the new grid. */
+  private _flipSlots(page: string) {
+    const grid = (this.renderRoot as ShadowRoot).querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+    const first = new Map<string, DOMRect>();
+    for (const el of grid?.querySelectorAll<HTMLElement>(".slot") ?? []) {
+      if (el.dataset.id) first.set(el.dataset.id, el.getBoundingClientRect());
+    }
+    const gen = ++this._flipGen;
+    return () => {
+      if (gen !== this._flipGen) return;
+      const gridNow = (this.renderRoot as ShadowRoot).querySelector(`.grid[data-page="${CSS.escape(page)}"]`);
+      const slots = [...(gridNow?.querySelectorAll<HTMLElement>(".slot") ?? [])];
+      for (const el of slots) {
+        el.style.transition = "none";
+        el.style.transform = "";
+      }
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      gridNow?.getBoundingClientRect();
+      if (reduce) {
+        for (const el of slots) el.style.zIndex = "";
+        return;
+      }
+      for (const el of slots) {
+        const id = el.dataset.id;
+        const a = id ? first.get(id) : undefined;
+        if (!a) continue;
+        const b = el.getBoundingClientRect();
+        const dx = a.left - b.left;
+        const dy = a.top - b.top;
+        const sx = b.width > 0 ? a.width / b.width : 1;
+        const sy = b.height > 0 ? a.height / b.height : 1;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(sx - 1) < 0.02 && Math.abs(sy - 1) < 0.02) {
+          el.style.zIndex = "";
+          continue;
+        }
+        el.style.transformOrigin = "top left";
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+        el.style.zIndex = "3";
+      }
+      // Flush the inverted boxes so the transition starts at the finger, not the new cell.
+      slots[0]?.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        if (gen !== this._flipGen) return;
+        for (const el of slots) {
+          if (!el.style.transform) continue;
+          el.style.transition = "transform var(--duration) var(--ease-out)";
+          el.style.transform = "";
+          const done = () => {
+            el.style.transition = "";
+            el.style.zIndex = "";
+            el.removeEventListener("transitionend", done);
+          };
+          el.addEventListener("transitionend", done);
+        }
+      });
+    };
+  }
+
+  private _commitLayout(page: string, change: () => void) {
+    const play = this._flipSlots(page);
+    change();
+    this.updateComplete.then(play);
+  }
+  private _cycleSize(page: string, id: string) {
+    this._setSize(page, id, nextSize(this._layout(page).sizes[id]));
   }
   private _items(page: string): Item[] {
     if (!this.home) return [];
     const base: Item[] = page === "home" ? [{ id: CLOCK }, ...this.home.favorites] : this.home.rooms.find((r) => r.id === page)?.tiles ?? [];
     return orderTiles(base, this._layouts[page]);
+  }
+
+  /** While a finger is dimming, the bar follows the finger. At rest a light is full-on or empty. */
+  private _withDim(tile: Tile): Tile {
+    if (!this._dim || this._dim.id !== tile.id) return tile;
+    const level = this._dim.level;
+    return {
+      ...tile,
+      active: level > 0,
+      state: level > 0 ? "on" : "off",
+      stateText: level > 0 ? `${level}%` : "Off",
+      fill: level > 0 ? level : undefined,
+    };
   }
 
   private _icon(tile: Tile): string | undefined {
@@ -227,36 +565,48 @@ export class HvApp extends LitElement {
   private _grid(page: string, subtitle: "room" | "state") {
     const editing = this._editing === page;
     const sizes = this._layout(page).sizes;
-    const span = (id: string) => {
-      const [c, r] = SPAN[sizes[id] ?? "S"];
-      return `grid-column: span ${Math.min(c, this._cols)}; grid-row: span ${r}`;
+    const spanOf = (id: string): [number, number] => {
+      const [c, r] = SPAN[sizes[id] ?? "S"] ?? SPAN.S;
+      return [Math.min(c, this._cols), r];
     };
-    return html`<div class="grid">
+    const span = (id: string) => {
+      const [c, r] = spanOf(id);
+      return `grid-column: span ${c}; grid-row: span ${r}`;
+    };
+    return html`<div class="grid" data-page=${page}>
       ${repeat(
         this._items(page),
         (i) => i.id,
-        (i) =>
-          "name" in i
-            ? html`<hv-tile
-                data-id=${i.id}
-                style=${span(i.id)}
-                .tile=${i}
-                .iconPath=${this._icon(i)}
-                .size=${(sizes[i.id] ?? "S") as Size}
-                subtitle=${subtitle}
-                ?editing=${editing}
-                ?dragging=${this._drag?.id === i.id}
-                ?readonly=${!this.states[i.id] || !tapAction(this.states[i.id])}
-                @pointerdown=${(e: PointerEvent) => this._onDown(e, i.id, page)}
-                @click=${() => this._tap(i)}
-              ></hv-tile>`
-            : html`<hv-clock
-                data-id=${CLOCK}
-                style=${span(CLOCK)}
-                ?editing=${editing}
-                ?dragging=${this._drag?.id === CLOCK}
-                @pointerdown=${(e: PointerEvent) => this._onDown(e, CLOCK, page)}
-              ></hv-clock>`
+        (i) => {
+          const [cols, rows] = spanOf(i.id);
+          const dragging = this._drag?.id === i.id;
+          return html`<div
+            class="slot ${editing ? "editing" : ""} ${dragging ? "dragging" : ""}"
+            data-id=${i.id}
+            data-shape=${rows > cols ? "tall" : cols > rows ? "wide" : "square"}
+            style=${span(i.id)}
+            @pointerdown=${(e: PointerEvent) => this._onDown(e, i.id, page)}
+          >
+            ${"name" in i
+              ? html`<hv-tile
+                  .tile=${this._withDim(i)}
+                  .iconPath=${this._icon(i)}
+                  .size=${(sizes[i.id] ?? "S") as Size}
+                  subtitle=${subtitle}
+                  ?editing=${editing}
+                  ?dragging=${dragging}
+                  ?resizing=${this._resize?.id === i.id}
+                  ?readonly=${!this.states[i.id] || !tapAction(this.states[i.id])}
+                  @click=${() => this._tap(i)}
+                ></hv-tile>`
+              : html`<hv-clock
+                  .size=${(sizes[i.id] ?? "S") as Size}
+                  ?editing=${editing}
+                  ?dragging=${dragging}
+                  ?resizing=${this._resize?.id === i.id}
+                ></hv-clock>`}
+          </div>`;
+        }
       )}
     </div>`;
   }
@@ -278,7 +628,9 @@ export class HvApp extends LitElement {
   private _title(page: string, text: string, extra?: unknown) {
     return html`<h1>
       <span style="font: inherit; color: inherit">${text}</span>
-      ${this._editing === page ? html`<button @click=${() => (this._editing = undefined)}>Done</button>` : extra ?? nothing}
+      ${this._editing === page
+        ? html`<button class="glass-chip" @click=${() => (this._editing = undefined)}>${glassLayers()}<span>Done</span></button>`
+        : extra ?? nothing}
     </h1>`;
   }
 
